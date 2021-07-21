@@ -1,0 +1,17 @@
+version: "3"
+services:
+  registry:
+    restart: unless-stopped
+    image: registry:2
+    ports:
+      - 5000:5000
+    environment:
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
+      REGISTRY_AUTH: token
+      REGISTRY_AUTH_TOKEN_REALM: http://localhost:3000/token
+      REGISTRY_AUTH_TOKEN_SERVICE: docker.chalmers.it
+      REGISTRY_AUTH_TOKEN_ISSUER: auth.docker.chalmers.it
+      REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE: /certs/RootCA.crt
+    volumes:
+      - ./certs:/certs
+  
