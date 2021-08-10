@@ -10,7 +10,7 @@ use std::{
     fmt,
 };
 
-/// Example claim (from https://docs.docker.com/registry/spec/auth/jwt/)
+/// Example claim (from <https://docs.docker.com/registry/spec/auth/jwt/>)
 /// ```json
 /// {
 ///     "iss": "auth.docker.com",
@@ -162,9 +162,7 @@ pub fn new_token(access: Vec<Access>, username: String, service: String, state: 
 
     let header = Header {
         alg: Algorithm::RS256,
-        kid: Some(generate_key_id(
-            &state.priv_key.public_key_to_der().unwrap(),
-        )), // TODO
+        kid: Some(generate_key_id((*state.pub_key).as_ref())),
         ..Header::default()
     };
 

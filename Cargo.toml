@@ -12,11 +12,12 @@ dotenv = "0.15.0"
 env_logger = "0.9"
 jsonwebtoken = "7.2"
 log = "0.4.14"
-openssl = "0.10"
 rand = "0.8"
 ring = "0.16"
+rsa = "0.5.0"
+pkcs8 = { version = "0.7.5", features = ["pkcs1"] }
 serde = { version = "1.0", features = ["derive"] }
 tide = "0.16.0"
 data-encoding = "2"
-surf = "2.2"
+surf = { version = "2.2", default_features = false, features = ["h1-client-rustls", "middleware-logger"] }
 anyhow = "1"

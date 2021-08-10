@@ -10,7 +10,8 @@ use async_std::fs;
 use chrono::{DateTime, Utc};
 use dotenv::dotenv;
 use jsonwebtoken::EncodingKey;
-use openssl::{pkey::Private, rsa::Rsa};
+use pkcs8::{FromPrivateKey, PublicKeyDocument, ToPublicKey};
+use rsa::RsaPrivateKey;
 use serde::{Deserialize, Serialize, Serializer};
 use std::sync::Arc;
 use tide::{Body, Request, Response};
@@ -20,7 +21,7 @@ use crate::token::{new_token, Access};
 
 #[derive(Clone)]
 pub struct State {
-    priv_key: Arc<Rsa<Private>>,
+    pub_key: Arc<PublicKeyDocument>,
     jwt_enc_key: Arc<EncodingKey>,
     gamma_uri: Arc<String>,
     opt: Arc<Opt>,
@@ -35,11 +36,11 @@ async fn main() -> tide::Result<()> {
         .await
         .expect("read cert");
 
-    let priv_key = Rsa::private_key_from_pem(pem.as_bytes()).expect("parse pem");
+    let priv_key = RsaPrivateKey::from_pkcs8_pem(&pem).expect("parse pem");
     let jwt_enc_key = EncodingKey::from_rsa_pem(pem.as_bytes()).expect("parse pem");
 
     let state = State {
-        priv_key: Arc::new(priv_key),
+        pub_key: Arc::new(priv_key.to_public_key_der().unwrap()),
         jwt_enc_key: Arc::new(jwt_enc_key),
         gamma_uri: Arc::new("https://gamma.chalmers.it".to_string()),
         opt: Arc::new(Opt::from_env()?),
