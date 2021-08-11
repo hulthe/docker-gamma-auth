@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::util::{generate_key_id, random_string, split_array};
 use crate::State;
 use chrono::serde::ts_seconds;
@@ -116,6 +117,11 @@ impl<'de> Deserialize<'de> for Access {
             where
                 E: de::Error,
             {
+                if value.contains(" ") {
+                    // The client can (in theory) provide a space-delimited list of access scopes
+                    unimplemented!("Deserializing a list of access scopes");
+                }
+
                 value.try_into().map_err(|e| {
                     error!("Access deserialize error: {}", e);
                     todo!("Access deserialize error")
@@ -136,7 +142,7 @@ impl<'de> Deserialize<'de> for Access {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum Action {
     #[serde(rename = "push")]
     Push,
@@ -157,7 +163,12 @@ impl TryFrom<&str> for Action {
     }
 }
 
-pub fn new_token(access: Vec<Access>, username: String, service: String, state: &State) -> String {
+pub fn new_token(
+    access: Vec<Access>,
+    username: String,
+    service: String,
+    state: &State,
+) -> Result<String, Error> {
     let now = Utc::now();
 
     let header = Header {
@@ -167,7 +178,7 @@ pub fn new_token(access: Vec<Access>, username: String, service: String, state: 
     };
 
     let claims = Claims {
-        iss: "auth.docker.chalmers.it".to_string(),
+        iss: state.opt.issuer.clone(),
         sub: username,
         aud: service,
         exp: now + Duration::seconds(state.opt.token_expires as i64),
@@ -177,5 +188,38 @@ pub fn new_token(access: Vec<Access>, username: String, service: String, state: 
         access,
     };
 
-    jsonwebtoken::encode(&header, &claims, &state.jwt_enc_key).expect("encode JWT")
+    Ok(jsonwebtoken::encode(&header, &claims, &state.jwt_enc_key)?)
+}
+
+/// ## Resource Scope Grammar: (from <https://github.com/distribution/distribution/blob/6affafd1f030087d88f88841bf66a8abe2bf4d24/docs/spec/auth/scope.md>)
+/// scope                   := resourcescope [ ' ' resourcescope ]*
+/// resourcescope           := resourcetype  ":" resourcename  ":" action [ ',' action ]*
+/// resourcetype            := resourcetypevalue [ '(' resourcetypevalue ')' ]
+/// resourcetypevalue       := /[a-z0-9]+/
+/// resourcename            := [ hostname '/' ] component [ '/' component ]*
+/// hostname                := hostcomponent ['.' hostcomponent]* [':' port-number]
+/// hostcomponent           := /([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])/
+/// port-number             := /[0-9]+/
+/// action                  := /[a-z]*/
+/// component               := alpha-numeric [ separator alpha-numeric ]*
+/// alpha-numeric           := /[a-z0-9]+/
+/// separator               := /[_.]|__|[-]*/
+pub fn stringify_access_scopes(scopes: &[Access]) -> String {
+    scopes
+        .iter()
+        .map(|access| {
+            format!(
+                "{}:{}:{}",
+                access.res_type,
+                access.name,
+                access
+                    .actions
+                    .iter()
+                    .flat_map(serde_json::to_string)
+                    .reduce(|a, b| [a, b].join(","))
+                    .unwrap_or_default(),
+            )
+        })
+        .reduce(|a, b| [a, b].join(" "))
+        .unwrap_or_default()
 }

@@ -4,8 +4,8 @@ Docker registry token issuer that authenticated against [Gamma](https://github.c
 
 ## todo
 
-* Create a Dockerfile
-* Refractor and clean some things up
-* Make more configurable (from env vars etc.)
-* Actually auth against gamma
-* Store and validate refresh tokens, using persistent or semi-persistent storage (e.g. postgres, redis)
+* [x] Create a Dockerfile
+* [ ] Refactor and clean some things up
+* [x] Make more configurable (from env vars etc.)
+* [x] Actually auth against gamma
+* [x] Store and validate refresh tokens, using persistent or semi-persistent storage (e.g. postgres, redis)

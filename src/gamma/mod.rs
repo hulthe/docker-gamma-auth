@@ -1,24 +1,22 @@
-//pub mod cache;
-
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use surf::{Body, Client, Response};
 
 use crate::opt::Opt;
 
-#[derive(Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct Credentials {
     pub username: String,
     pub password: String,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct User {
     pub cid: String,
-    pub username: String,
     pub groups: Vec<Group>,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Group {
     pub name: String,
 
@@ -26,57 +24,56 @@ pub struct Group {
     pub super_group: SuperGroup,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct SuperGroup {
     pub name: String,
 }
 
-fn check_status(resp: &Response) -> Result<(), String> {
+fn check_status(resp: &Response) -> Result<(), anyhow::Error> {
     if resp.status().is_server_error() {
-        Err(format!("Gamma Error: {}", resp.status()))
+        Err(anyhow!("Gamma Error: {}", resp.status()))
     } else if resp.status().is_client_error() {
-        Err("Invalid credentials".to_string())
+        Err(anyhow!("Invalid credentials"))
     } else {
         Ok(())
     }
 }
 
-pub(crate) async fn login(
-    client: &mut Client,
-    opt: &Opt,
-    credentials: &Credentials,
-) -> Result<User, String> {
+pub(crate) async fn login(opt: &Opt, credentials: &Credentials) -> Result<User, anyhow::Error> {
+    let mut client = Client::new().with(surf_cookie_middleware::CookieMiddleware::new());
     let login_uri = format!("{}{}", opt.gamma_uri, "/api/login");
     let login_resp = client
         .post(&login_uri)
         .body(Body::from_form(credentials).expect("infallible"))
         .send()
         .await
-        .map_err(|e| format!("gamma: login failed: {}", e))?;
+        .map_err(|e| anyhow!("gamma: login failed: {}", e))?;
 
-    debug!(
-        "gamma: tried logging in. user={}, uri={}, response={:?}",
-        credentials.username, login_uri, login_resp
+    info!(
+        r#"POST "{}" user={} status={:?}"#,
+        login_uri,
+        credentials.username,
+        login_resp.status()
     );
 
     check_status(&login_resp)?;
 
-    get_me(client, opt, &credentials.username).await
+    get_me(&mut client, opt, &credentials.username).await
 }
 
-pub(crate) async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Result<User, String> {
+async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Result<User, anyhow::Error> {
     let me_uri = format!("{}{}", opt.gamma_uri, "/api/users/me");
     let mut me_resp = client
         .get(&me_uri)
         .send()
         .await
-        .map_err(|e| format!("gamma: get user info failed: {}", e))?;
+        .map_err(|e| anyhow!("gamma: get user info failed: {}", e))?;
 
-    debug!(
-        "gamma: tried getting user info. user={}, uri={}, response={}",
+    info!(
+        r#"GET "{}" user={} status={:?}"#,
+        me_uri,
         username,
-        me_uri.as_str(),
-        format!("{:?}", me_resp).as_str(),
+        me_resp.status()
     );
 
     check_status(&me_resp)?;
@@ -84,7 +81,49 @@ pub(crate) async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Re
     let user: User = me_resp
         .body_json()
         .await
-        .map_err(|e| format!("gamma: failed to deserialize json: {}", e))?;
+        .map_err(|e| anyhow!("gamma: failed to deserialize json: {}", e))?;
 
     Ok(user)
+}
+
+pub(crate) async fn get_user(opt: &Opt, username: &str) -> Result<User, anyhow::Error> {
+    let client = Client::default();
+    let user_uri = format!("{}{}{}", opt.gamma_uri, "/api/users/", username);
+    let mut user_resp = client
+        .get(&user_uri)
+        .header("Authorization", format!("pre-shared {}", opt.gamma_api_key))
+        .send()
+        .await
+        .map_err(|e| anyhow!("gamma: get user info failed: {}", e))?;
+
+    info!(
+        r#"GET "{}" user={} status={:?}"#,
+        user_uri,
+        username,
+        user_resp.status()
+    );
+
+    check_status(&user_resp)?;
+
+    let user: User = user_resp.body_json().await.map_err(|e| {
+        error!("{}", e);
+        anyhow!("gamma: failed to deserialize json: {}", e)
+    })?;
+
+    Ok(user)
+}
+
+impl User {
+    pub fn is_member_of<T: AsRef<str>>(&self, allowed: &[T]) -> bool {
+        let mut groups = self
+            .groups
+            .iter()
+            .flat_map(|group| [&group.name, &group.super_group.name]);
+
+        groups.any(|group| {
+            allowed
+                .iter()
+                .any(|allowed| allowed.as_ref() == group.as_str())
+        })
+    }
 }

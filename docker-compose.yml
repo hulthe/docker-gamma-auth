@@ -14,4 +14,9 @@ services:
       REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE: /certs/RootCA.crt
     volumes:
       - ./certs:/certs
-  
+
+  redis:
+    image: redis:6.2
+    ports:
+      - 6379:6379
+ 

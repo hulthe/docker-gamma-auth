@@ -1,9 +1,13 @@
-use rand::{distributions::Alphanumeric, thread_rng, Rng, RngCore};
+use data_encoding::{BASE32, BASE64};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use sha2::{Digest, Sha256};
+
+use crate::opt::Opt;
 
 pub fn split_array<const N: usize>(s: &str, pat: char) -> Option<[&str; N]> {
     let mut arr = [""; N];
 
-    let mut split = s.split(pat);
+    let mut split = s.splitn(N, pat);
     for i in 0..N {
         arr[i] = split.next()?;
     }
@@ -13,13 +17,10 @@ pub fn split_array<const N: usize>(s: &str, pat: char) -> Option<[&str; N]> {
 
 /// Generate libtrust key id from a DER public key
 pub fn generate_key_id(key: &[u8]) -> String {
-    use data_encoding::BASE32;
-    use ring::digest::{digest, SHA256};
-
     const N: usize = 240 / 8;
 
-    let digest = digest(&SHA256, key);
-    let digest = &digest.as_ref()[..N]; // trunkate to 240 bits
+    let digest = Sha256::new().chain(key).finalize();
+    let digest = &digest[..N]; // truncate to 240 bits
 
     let b32 = BASE32.encode(digest);
 
@@ -31,10 +32,12 @@ pub fn generate_key_id(key: &[u8]) -> String {
         .unwrap()
 }
 
-pub fn random_bytes(len: usize) -> Vec<u8> {
-    let mut bytes = vec![0; len];
-    thread_rng().fill_bytes(&mut bytes);
-    bytes
+pub fn hash_token(token: &str, _opt: &Opt) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"seed");
+    hasher.update(token.as_bytes());
+    let digest = hasher.finalize();
+    BASE64.encode(&digest)
 }
 
 pub fn random_string(len: usize) -> String {
@@ -43,4 +46,9 @@ pub fn random_string(len: usize) -> String {
         .take(len)
         .map(char::from)
         .collect()
+}
+
+/// Convert an IntoIterator to a Vec
+pub fn to_vec<T, I: IntoIterator<Item = T>>(i: I) -> Vec<T> {
+    i.into_iter().collect()
 }
