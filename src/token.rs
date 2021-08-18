@@ -142,16 +142,29 @@ impl<'de> Deserialize<'de> for Access {
     }
 }
 
+/// A kind of action to perform on a resource
+///
+/// *NOTE:* The documentation on this type is severely lacking. It seems to be just an arbitrary
+/// string. The variants represents the strings that we've identified, but there is likely more of
+/// them.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum Action {
+    /// Push-access to a repository
     #[serde(rename = "push")]
     Push,
 
+    /// Pull-access to a repository
     #[serde(rename = "pull")]
     Pull,
 
+    /// Delete-access to a repository
+    #[serde(rename = "delete")]
+    Delete,
+
+    /// This string seems to indicate that no other action is applicable. It is found in the
+    /// `registry:catalog:*` scope, which grants access to reading the global repository catalog.
     #[serde(rename = "*")]
-    Wildcard,
+    Star,
 }
 
 impl TryFrom<&str> for Action {
@@ -161,8 +174,22 @@ impl TryFrom<&str> for Action {
         match value {
             "pull" => Ok(Self::Pull),
             "push" => Ok(Self::Push),
-            "*" => Ok(Self::Wildcard), /* TODO */
+            "delete" => Ok(Self::Delete),
+            "*" => Ok(Self::Star),
             _ => Err("Must be push or pull"),
+        }
+    }
+}
+
+impl Action {
+    /// Whether this action does **not** requires authentication
+    pub fn is_unprivileged(&self) -> bool {
+        // Actions should be explicitly marked as unprivileged, since they can be granted without
+        // any kind of authentication.
+        match self {
+            Action::Star => true,
+            Action::Pull => true,
+            _ => false,
         }
     }
 }
