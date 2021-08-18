@@ -12,6 +12,7 @@ use async_std::fs;
 use chrono::{DateTime, Utc};
 use data_encoding::BASE64;
 use dotenv::dotenv;
+use http_types::headers::HeaderValue;
 use jsonwebtoken::EncodingKey;
 use mobc::{Connection, Pool};
 use mobc_redis::{redis::Client, RedisConnectionManager};
@@ -19,6 +20,7 @@ use pkcs8::{FromPrivateKey, PublicKeyDocument, ToPublicKey};
 use rsa::RsaPrivateKey;
 use serde::{Deserialize, Serialize, Serializer};
 use std::sync::Arc;
+use tide::security::{CorsMiddleware, Origin};
 use tide::{Body, Request, Response};
 
 use crate::error::Error;
@@ -70,6 +72,12 @@ async fn run() -> Result<(), Error> {
     };
 
     let mut app = tide::with_state(state);
+    app.with(
+        CorsMiddleware::new()
+            .allow_methods("GET, POST, OPTIONS".parse::<HeaderValue>().unwrap())
+            .allow_origin(Origin::from("*"))
+            .allow_credentials(false),
+    );
     app.at("/token").get(issue_token).post(refresh_token);
     app.listen("0.0.0.0:3000").await?;
     Ok(())

@@ -726,6 +726,7 @@ dependencies = [
  "data-encoding",
  "dotenv",
  "env_logger",
+ "http-types",
  "jsonwebtoken",
  "log",
  "mobc",
