@@ -248,7 +248,7 @@ fn validate_scope(user: Option<&User>, opt: &Opt, scope: Option<Access>) -> Opti
                 actions: access
                     .actions
                     .into_iter()
-                    .filter(|&action| action == Action::Pull)
+                    .filter(|&action| action != Action::Push)
                     .collect(),
                 ..access
             })

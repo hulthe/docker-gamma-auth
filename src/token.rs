@@ -149,6 +149,9 @@ pub enum Action {
 
     #[serde(rename = "pull")]
     Pull,
+
+    #[serde(rename = "*")]
+    Wildcard,
 }
 
 impl TryFrom<&str> for Action {
@@ -158,6 +161,7 @@ impl TryFrom<&str> for Action {
         match value {
             "pull" => Ok(Self::Pull),
             "push" => Ok(Self::Push),
+            "*" => Ok(Self::Wildcard), /* TODO */
             _ => Err("Must be push or pull"),
         }
     }
