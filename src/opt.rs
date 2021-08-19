@@ -11,6 +11,9 @@ pub struct Opt {
     /// Number of seconds that an access token should be valid for
     pub token_expires: u32,
 
+    /// Number of seconds that a refresh token should be valid for
+    pub refresh_token_expires: u32,
+
     /// Example: redis://localhost:6379
     pub redis_host: String,
 
@@ -29,6 +32,7 @@ impl Opt {
             issuer: env("AUTH_ISSUER")?,
             gamma_uri: env("GAMMA_HOST")?,
             token_expires: env("TOKEN_EXPIRES")?.parse()?,
+            refresh_token_expires: env("REFRESH_TOKEN_EXPIRES")?.parse()?,
             redis_host: env("REDIS_HOST")?,
             gamma_api_key: env("GAMMA_API_KEY")?,
             priviliged_groups: env("PRIVILEGED_GROUPS")?

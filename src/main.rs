@@ -2,6 +2,7 @@ mod error;
 mod gamma;
 mod opt;
 mod redis;
+mod response;
 mod token;
 mod util;
 
@@ -14,13 +15,14 @@ use data_encoding::BASE64;
 use dotenv::dotenv;
 use http_types::headers::HeaderValue;
 use jsonwebtoken::EncodingKey;
-use mobc::{Connection, Pool};
+use mobc::Pool;
 use mobc_redis::{redis::Client, RedisConnectionManager};
 use pkcs8::{FromPrivateKey, PublicKeyDocument, ToPublicKey};
 use rsa::RsaPrivateKey;
 use serde::{Deserialize, Serialize, Serializer};
 use std::sync::Arc;
 use tide::security::{CorsMiddleware, Origin};
+use tide::utils::After;
 use tide::{Body, Request, Response};
 
 use crate::error::Error;
@@ -29,16 +31,13 @@ use crate::opt::Opt;
 use crate::token::{new_token, stringify_access_scopes, Access, Action};
 use crate::util::{hash_token, random_string, to_vec};
 
-pub type RedisPool = Pool<RedisConnectionManager>;
-pub type RedisConnection = Connection<RedisConnectionManager>;
-
 #[derive(Clone)]
 pub struct State {
     pub_key: Arc<PublicKeyDocument>,
     jwt_enc_key: Arc<EncodingKey>,
     gamma_uri: Arc<String>,
     opt: Arc<Opt>,
-    redis_pool: RedisPool,
+    redis_pool: redis::Pool,
 }
 
 #[async_std::main]
@@ -59,7 +58,7 @@ async fn run() -> Result<(), Error> {
 
     let opt = Opt::from_env()?;
 
-    let client = Client::open(opt.redis_host.clone()).unwrap();
+    let client = Client::open(opt.redis_host.clone())?;
     let manager = RedisConnectionManager::new(client);
     let redis_pool = Pool::builder().build(manager);
 
@@ -72,9 +71,14 @@ async fn run() -> Result<(), Error> {
     };
 
     let mut app = tide::with_state(state);
+    app.with(After(error::handler));
     app.with(
         CorsMiddleware::new()
-            .allow_methods("GET, POST, OPTIONS".parse::<HeaderValue>().unwrap())
+            .allow_methods(
+                "GET, POST, OPTIONS"
+                    .parse::<HeaderValue>()
+                    .expect("infallible"),
+            )
             .allow_origin(Origin::from("*"))
             .allow_credentials(false),
     );
@@ -95,24 +99,11 @@ impl From<(&str, &str)> for Credentials {
 async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response> {
     let state = req.state();
 
-    fn text_response(status: u16, msg: String) -> tide::Response {
-        Response::builder(status)
-            .body(Body::from_string(msg))
-            .build()
-    }
-
-    fn unauthorized(msg: &str) -> tide::Response {
-        text_response(401, format!("Unauthorized:\n{}", msg))
-    }
-
-    fn bad_request(msg: &str) -> tide::Response {
-        warn!("Basic auth: Bad Request: {}", msg);
-        text_response(400, format!("Bad Request:\n{}", msg))
-    }
-
     /// Convert an Option or a Result into a Result<T, BadRequest>
     fn ok_or_bad<T, I: IntoIterator<Item = T>>(msg: &str, iter: I) -> Result<T, tide::Response> {
-        iter.into_iter().next().ok_or_else(|| bad_request(msg))
+        iter.into_iter()
+            .next()
+            .ok_or_else(|| response::bad_request(msg))
     }
 
     match req.header("Authorization") {
@@ -124,7 +115,9 @@ async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response
             )?;
 
             if kind != "Basic" {
-                return Err(bad_request("Authorization header format must be Basic"));
+                return Err(response::bad_request(
+                    "Authorization header format must be Basic",
+                ));
             }
 
             let credentials = ok_or_bad(
@@ -145,7 +138,7 @@ async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response
                 Ok(user) => user,
                 Err(msg) => {
                     warn!("Gamma Error: {}", msg);
-                    return Err(unauthorized("Invalid credentials"));
+                    return Err(response::unauthorized("Invalid credentials"));
                 }
             };
 
@@ -156,7 +149,10 @@ async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response
 }
 
 async fn issue_token(req: Request<State>) -> tide::Result {
-    let params = req.query::<IssueTokenRequest>()?;
+    let params = match req.query::<IssueTokenRequest>() {
+        Ok(params) => params,
+        Err(_) => return Ok(response::bad_request("Invalid request data format")),
+    };
     let state = req.state();
 
     info!(r#"GET "/token". params: {:?}"#, params);
@@ -169,12 +165,7 @@ async fn issue_token(req: Request<State>) -> tide::Result {
     let refresh_token = match (&user, params.offline_token) {
         (Some(user), Some(true)) => {
             let refresh_token = random_string(64);
-            redis::set(
-                &state.redis_pool,
-                &hash_token(&refresh_token, &state.opt),
-                &user.cid,
-            )
-            .await?;
+            redis::set(&state, &hash_token(&refresh_token, &state.opt), &user.cid).await?;
             Some(refresh_token)
         }
         _ => None,
@@ -200,18 +191,31 @@ async fn issue_token(req: Request<State>) -> tide::Result {
 }
 
 async fn refresh_token(mut req: Request<State>) -> tide::Result {
-    let params = req.body_form::<OAuth2TokenRequest>().await.unwrap();
+    let params = match req.body_form::<OAuth2TokenRequest>().await {
+        Ok(params) => params,
+        Err(_) => return Ok(response::bad_request("Invalid request data format")),
+    };
+
     let state = req.state();
 
     info!(r#"POST "/token". params: {:?}"#, params);
 
     match params.grant_type {
         GrantType::RefreshToken => {
-            // TODO: don't unwrap
-            let refresh_token = params.refresh_token.unwrap();
+            let refresh_token = match params.refresh_token {
+                Some(token) => token,
+                None => return Ok(response::bad_request("Missing refresh token")),
+            };
+
             // lookup hash of token from redis
             let token_hash = hash_token(&refresh_token, &state.opt);
-            let username = redis::get(&state.redis_pool, &token_hash).await?;
+            let username = match redis::get(&state, &token_hash).await? {
+                Some(username) => username,
+                None => {
+                    // refresh token is likely expired
+                    return Ok(response::unauthorized("Invalid or expired token"));
+                }
+            };
             let user = gamma::get_user(&state.opt, &username).await?;
 
             let scope = validate_scope(Some(&user), &state.opt, params.scope.clone());

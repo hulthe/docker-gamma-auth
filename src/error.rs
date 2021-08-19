@@ -1,5 +1,7 @@
+use crate::response;
 use mobc_redis::redis::RedisError;
 use std::io;
+use tide::Response;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -20,4 +22,16 @@ pub enum Error {
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+pub async fn handler(response: Response) -> tide::Result {
+    if let Some(error) = response.error() {
+        error!("{}", error);
+        Ok(response::plaintext(
+            500,
+            "Internal Server Error".to_string(),
+        ))
+    } else {
+        Ok(response)
+    }
 }

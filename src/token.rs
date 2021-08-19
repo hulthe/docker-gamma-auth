@@ -215,7 +215,7 @@ pub fn new_token(
         exp: now + Duration::seconds(state.opt.token_expires as i64),
         nbf: now,
         iat: now,
-        jti: random_string(16), // TODO
+        jti: random_string(16),
         access,
     };
 
