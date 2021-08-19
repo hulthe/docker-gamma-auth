@@ -165,7 +165,7 @@ async fn issue_token(req: Request<State>) -> tide::Result {
     let refresh_token = match (&user, params.offline_token) {
         (Some(user), Some(true)) => {
             let refresh_token = random_string(64);
-            redis::set(&state, &hash_token(&refresh_token, &state.opt), &user.cid).await?;
+            redis::set(state, &hash_token(&refresh_token, &state.opt), &user.cid).await?;
             Some(refresh_token)
         }
         _ => None,
@@ -209,7 +209,7 @@ async fn refresh_token(mut req: Request<State>) -> tide::Result {
 
             // lookup hash of token from redis
             let token_hash = hash_token(&refresh_token, &state.opt);
-            let username = match redis::get(&state, &token_hash).await? {
+            let username = match redis::get(state, &token_hash).await? {
                 Some(username) => username,
                 None => {
                     // refresh token is likely expired
@@ -246,19 +246,17 @@ fn validate_scope(user: Option<&User>, opt: &Opt, scope: Option<Access>) -> Opti
 
     if can_write {
         scope
+    } else if let Some(access) = scope {
+        Some(Access {
+            actions: access
+                .actions
+                .into_iter()
+                .filter(Action::is_unprivileged) // only retain unprivileged actions
+                .collect(),
+            ..access
+        })
     } else {
-        if let Some(access) = scope {
-            Some(Access {
-                actions: access
-                    .actions
-                    .into_iter()
-                    .filter(Action::is_unprivileged) // only retain unprivileged actions
-                    .collect(),
-                ..access
-            })
-        } else {
-            None
-        }
+        None
     }
 }
 

@@ -83,10 +83,10 @@ impl TryFrom<&str> for Access {
         // examples:
         //  repository:nginx:push,pull
         //  registry:catalog:*
-        let [res_type, name, actions] = split_array(&value, ':').ok_or("Not enough parts")?;
+        let [res_type, name, actions] = split_array(value, ':').ok_or("Not enough parts")?;
 
         let actions = actions
-            .split(",")
+            .split(',')
             .map(TryFrom::try_from)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_e| "Invalid actions")?;
@@ -117,7 +117,7 @@ impl<'de> Deserialize<'de> for Access {
             where
                 E: de::Error,
             {
-                if value.contains(" ") {
+                if value.contains(' ') {
                     // The client can (in theory) provide a space-delimited list of access scopes
                     unimplemented!("Deserializing a list of access scopes");
                 }
@@ -186,11 +186,7 @@ impl Action {
     pub fn is_unprivileged(&self) -> bool {
         // Actions should be explicitly marked as unprivileged, since they can be granted without
         // any kind of authentication.
-        match self {
-            Action::Star => true,
-            Action::Pull => true,
-            _ => false,
-        }
+        matches!(self, Action::Star | Action::Pull)
     }
 }
 

@@ -12,7 +12,7 @@ pub async fn get(state: &State, key: &str) -> Result<Option<String>, Error> {
     // redis_conn.get_ex(...) doesn't exist :(
     Ok(Option::from_redis_value(
         &redis_conn
-            .req_packed_command(&redis::cmd("GETEX").arg(key).arg("EX").arg(expires))
+            .req_packed_command(redis::cmd("GETEX").arg(key).arg("EX").arg(expires))
             .await?,
     )?)
 }

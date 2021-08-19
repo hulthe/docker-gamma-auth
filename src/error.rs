@@ -12,7 +12,7 @@ pub enum Error {
     PKCS8(#[from] pkcs8::Error),
 
     #[error("JWT error: {0}")]
-    JWT(#[from] jsonwebtoken::errors::Error),
+    Jwt(#[from] jsonwebtoken::errors::Error),
 
     #[error("Redis pool error: {0}")]
     Mobc(#[from] mobc::Error<RedisError>),

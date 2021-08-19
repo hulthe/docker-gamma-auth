@@ -8,8 +8,8 @@ pub fn split_array<const N: usize>(s: &str, pat: char) -> Option<[&str; N]> {
     let mut arr = [""; N];
 
     let mut split = s.splitn(N, pat);
-    for i in 0..N {
-        arr[i] = split.next()?;
+    for part in arr.iter_mut() {
+        *part = split.next()?;
     }
 
     Some(arr)
