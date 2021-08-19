@@ -127,3 +127,12 @@ impl User {
         })
     }
 }
+
+impl From<(&str, &str)> for Credentials {
+    fn from((user, pass): (&str, &str)) -> Self {
+        Credentials {
+            username: user.to_string(),
+            password: pass.to_string(),
+        }
+    }
+}

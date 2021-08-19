@@ -1,5 +1,7 @@
+use chrono::{DateTime, Utc};
 use data_encoding::{BASE32, BASE64};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use serde::ser::Serializer;
 use sha2::{Digest, Sha256};
 
 use crate::opt::Opt;
@@ -51,4 +53,18 @@ pub fn random_string(len: usize) -> String {
 /// Convert an IntoIterator to a Vec
 pub fn to_vec<T, I: IntoIterator<Item = T>>(i: I) -> Vec<T> {
     i.into_iter().collect()
+}
+
+/// Serialize a datetime as RFC 3339
+pub fn utc_date_time_to_rfc3339<S>(
+    date_time: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match date_time {
+        Some(date_time) => serializer.serialize_str(&date_time.to_rfc3339()),
+        None => unreachable!(),
+    }
 }

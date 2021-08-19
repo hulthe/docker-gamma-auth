@@ -1,6 +1,10 @@
-use crate::error::Error;
-use crate::util::{generate_key_id, random_string, split_array};
-use crate::State;
+use crate::{
+    error::Error,
+    gamma::User,
+    opt::Opt,
+    util::{generate_key_id, random_string, split_array},
+    State,
+};
 use chrono::serde::ts_seconds;
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{Algorithm, Header};
@@ -249,4 +253,25 @@ pub fn stringify_access_scopes(scopes: &[Access]) -> String {
         })
         .reduce(|a, b| [a, b].join(" "))
         .unwrap_or_default()
+}
+
+pub fn validate_scope(user: Option<&User>, opt: &Opt, scope: Option<Access>) -> Option<Access> {
+    let can_write = user
+        .iter()
+        .any(|user| user.is_member_of(&opt.priviliged_groups));
+
+    if can_write {
+        scope
+    } else if let Some(access) = scope {
+        Some(Access {
+            actions: access
+                .actions
+                .into_iter()
+                .filter(Action::is_unprivileged) // only retain unprivileged actions
+                .collect(),
+            ..access
+        })
+    } else {
+        None
+    }
 }
