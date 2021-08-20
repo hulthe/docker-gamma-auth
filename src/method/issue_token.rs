@@ -1,13 +1,14 @@
 use crate::{
     gamma::{self, User},
     redis, response,
-    token::{new_token, validate_scope, Access},
-    util::{hash_token, random_string, to_vec, utc_date_time_to_rfc3339},
+    token::{new_token, validate_scopes, Access},
+    util::{hash_token, random_string, utc_date_time_to_rfc3339},
     State,
 };
 use chrono::{DateTime, Utc};
 use data_encoding::BASE64;
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 use tide::{Body, Request, Response};
 
 #[derive(Debug, Deserialize)]
@@ -15,9 +16,12 @@ struct IssueTokenRequest {
     service: String,
     offline_token: Option<bool>,
     client_id: Option<String>,
-    // TODO: should probably be a Vec
-    scope: Option<Access>,
     account: Option<String>,
+
+    // multiple scopes are specified with multpile `scope=...`-entries in the url query string.
+    // serde_qs does not support this kind of encoding so we have to manually deserialize it.
+    #[serde(skip)]
+    scopes: Vec<Access>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -33,10 +37,32 @@ struct IssueTokenResponse {
 }
 
 pub async fn handler(req: Request<State>) -> tide::Result {
-    let params = match req.query::<IssueTokenRequest>() {
+    // serde_qs doesn't like duplicated keys, so we strip them
+    const SCOPE_KEY: &str = "scope";
+    let mut stripped_url = req.url().clone();
+    stripped_url
+        .query_pairs_mut()
+        .clear()
+        .extend_pairs(req.url().query_pairs().filter(|(k, _)| k != SCOPE_KEY));
+
+    // parse query parameters (except "scope")
+    let params: IssueTokenRequest = match serde_qs::from_str(stripped_url.as_str()) {
         Ok(params) => params,
         Err(_) => return Ok(response::bad_request("Invalid request data format")),
     };
+
+    // see comment on IssueTokenRequest::scope
+    debug_assert!(params.scopes.is_empty());
+    let params = IssueTokenRequest {
+        scopes: req
+            .url()
+            .query_pairs()
+            .filter(|(k, _)| k == SCOPE_KEY)
+            .flat_map(|(_, v)| Access::try_from(v.as_ref())) /* invalid strings are discarded */
+            .collect(),
+        ..params
+    };
+
     let state = req.state();
 
     info!(r#"GET "/token". params: {:?}"#, params);
@@ -55,10 +81,11 @@ pub async fn handler(req: Request<State>) -> tide::Result {
         _ => None,
     };
 
-    let scope = validate_scope(user.as_ref(), &state.opt, params.scope);
+    // Filter scopes that the user do not have access to
+    let scopes: Vec<Access> = validate_scopes(params.scopes, user.as_ref(), &state.opt);
 
     let token = new_token(
-        to_vec(scope),
+        scopes,
         params.account.unwrap_or_default(),
         params.service,
         state,

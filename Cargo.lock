@@ -736,6 +736,7 @@ dependencies = [
  "rsa",
  "serde",
  "serde_json",
+ "serde_qs",
  "sha2",
  "surf",
  "surf-cookie-middleware",

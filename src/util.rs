@@ -1,10 +1,9 @@
+use crate::opt::Opt;
 use chrono::{DateTime, Utc};
 use data_encoding::{BASE32, BASE64};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use serde::ser::Serializer;
+use serde::Serializer;
 use sha2::{Digest, Sha256};
-
-use crate::opt::Opt;
 
 pub fn split_array<const N: usize>(s: &str, pat: char) -> Option<[&str; N]> {
     let mut arr = [""; N];
@@ -48,11 +47,6 @@ pub fn random_string(len: usize) -> String {
         .take(len)
         .map(char::from)
         .collect()
-}
-
-/// Convert an IntoIterator to a Vec
-pub fn to_vec<T, I: IntoIterator<Item = T>>(i: I) -> Vec<T> {
-    i.into_iter().collect()
 }
 
 /// Serialize a datetime as RFC 3339
