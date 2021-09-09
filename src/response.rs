@@ -13,6 +13,6 @@ pub fn unauthorized(msg: &str) -> tide::Response {
 }
 
 pub fn bad_request(msg: &str) -> tide::Response {
-    warn!("Basic auth: Bad Request: {}", msg);
+    warn!("Bad Request: {}", msg);
     plaintext(400, format!("Bad Request:\n{}", msg))
 }

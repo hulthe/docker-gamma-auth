@@ -37,6 +37,8 @@ struct IssueTokenResponse {
 }
 
 pub async fn handler(req: Request<State>) -> tide::Result {
+    info!(r#"GET "/token". url: {}"#, req.url());
+
     // serde_qs doesn't like duplicated keys, so we strip them
     const SCOPE_KEY: &str = "scope";
     let mut stripped_url = req.url().clone();
@@ -46,10 +48,16 @@ pub async fn handler(req: Request<State>) -> tide::Result {
         .extend_pairs(req.url().query_pairs().filter(|(k, _)| k != SCOPE_KEY));
 
     // parse query parameters (except "scope")
-    let params: IssueTokenRequest = match serde_qs::from_str(stripped_url.as_str()) {
-        Ok(params) => params,
-        Err(_) => return Ok(response::bad_request("Invalid request data format")),
-    };
+    let params: IssueTokenRequest =
+        match serde_qs::from_str(stripped_url.query().unwrap_or_default()) {
+            Ok(params) => params,
+            Err(e) => {
+                return Ok(response::bad_request(&format!(
+                    "Invalid request data format: {}",
+                    e
+                )))
+            }
+        };
 
     // see comment on IssueTokenRequest::scope
     debug_assert!(params.scopes.is_empty());
