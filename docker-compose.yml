@@ -3,13 +3,12 @@ services:
   registry:
     restart: unless-stopped
     image: registry:2
-    ports:
-      - 5000:5000
+    network_mode: host
     environment:
       REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: /data
       REGISTRY_AUTH: token
-      REGISTRY_AUTH_TOKEN_REALM: http://localhost:3000/token
-      REGISTRY_AUTH_TOKEN_SERVICE: docker.chalmers.it
+      REGISTRY_AUTH_TOKEN_REALM: http://localhost:${PORT}/token
+      REGISTRY_AUTH_TOKEN_SERVICE: localhost:${PORT}
       REGISTRY_AUTH_TOKEN_ISSUER: auth.docker.chalmers.it
       REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE: /certs/RootCA.crt
     volumes:
@@ -18,5 +17,4 @@ services:
   redis:
     image: redis:6.2
     ports:
-      - 6379:6379
- 
+      - ${REDIS_PORT}:6379
