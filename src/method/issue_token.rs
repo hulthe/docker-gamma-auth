@@ -1,7 +1,8 @@
 use crate::{
-    gamma::{self, User},
+    gamma,
+    opt::Opt,
     redis, response,
-    token::{new_token, validate_scopes, Access},
+    token::{new_token, validate_scopes, Access, User, MACHINE_USER},
     util::{hash_token, random_string, utc_date_time_to_rfc3339},
     State,
 };
@@ -75,15 +76,20 @@ pub async fn handler(req: Request<State>) -> tide::Result {
 
     info!(r#"GET "/token". params: {:?}"#, params);
 
-    let user = match basic_auth(&req).await {
+    let user = match basic_auth(&req, &state.opt).await {
         Ok(user) => user,
         Err(resp) => return Ok(resp),
     };
 
     let refresh_token = match (&user, params.offline_token) {
         (Some(user), Some(true)) => {
+            let username = match user {
+                User::MachineUser(_) => MACHINE_USER,
+                User::GammaUser(gamma_user) => &gamma_user.cid,
+            };
+
             let refresh_token = random_string(64);
-            redis::set(state, &hash_token(&refresh_token, &state.opt), &user.cid).await?;
+            redis::set(state, &hash_token(&refresh_token, &state.opt), &username).await?;
             Some(refresh_token)
         }
         _ => None,
@@ -109,7 +115,7 @@ pub async fn handler(req: Request<State>) -> tide::Result {
     Ok(Response::builder(200).body(Body::from_json(&body)?).build())
 }
 
-async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response> {
+async fn basic_auth(req: &Request<State>, opt: &Opt) -> Result<Option<User>, tide::Response> {
     let state = req.state();
 
     /// Convert an Option or a Result into a Result<T, BadRequest>
@@ -147,12 +153,20 @@ async fn basic_auth(req: &Request<State>) -> Result<Option<User>, tide::Response
                 credentials.split_once(":"),
             )?;
 
-            let user = match gamma::login(&state.opt, &(user, pass).into()).await {
-                Ok(user) => user,
-                Err(msg) => {
-                    warn!("Gamma Error: {}", msg);
+            let user = if user == MACHINE_USER {
+                if opt.machine_tokens.iter().any(|token| token == pass) {
+                    User::MachineUser(pass.to_string())
+                } else {
                     return Err(response::unauthorized("Invalid credentials"));
                 }
+            } else {
+                User::GammaUser(match gamma::login(&state.opt, &(user, pass).into()).await {
+                    Ok(user) => user,
+                    Err(msg) => {
+                        warn!("Gamma Error: {}", msg);
+                        return Err(response::unauthorized("Invalid credentials"));
+                    }
+                })
             };
 
             Ok(Some(user))

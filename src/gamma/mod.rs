@@ -11,21 +11,21 @@ pub struct Credentials {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct User {
+pub struct GammaUser {
     pub cid: String,
-    pub groups: Vec<Group>,
+    pub groups: Vec<GammaGroup>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct Group {
+pub struct GammaGroup {
     pub name: String,
 
     #[serde(rename = "superGroup")]
-    pub super_group: SuperGroup,
+    pub super_group: GammaSuperGroup,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct SuperGroup {
+pub struct GammaSuperGroup {
     pub name: String,
 }
 
@@ -39,7 +39,10 @@ fn check_status(resp: &Response) -> Result<(), anyhow::Error> {
     }
 }
 
-pub(crate) async fn login(opt: &Opt, credentials: &Credentials) -> Result<User, anyhow::Error> {
+pub(crate) async fn login(
+    opt: &Opt,
+    credentials: &Credentials,
+) -> Result<GammaUser, anyhow::Error> {
     let mut client = Client::new().with(surf_cookie_middleware::CookieMiddleware::new());
     let login_uri = format!("{}{}", opt.gamma_uri, "/api/login");
     let login_resp = client
@@ -61,7 +64,11 @@ pub(crate) async fn login(opt: &Opt, credentials: &Credentials) -> Result<User, 
     get_me(&mut client, opt, &credentials.username).await
 }
 
-async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Result<User, anyhow::Error> {
+async fn get_me(
+    client: &mut Client,
+    opt: &Opt,
+    username: &str,
+) -> Result<GammaUser, anyhow::Error> {
     let me_uri = format!("{}{}", opt.gamma_uri, "/api/users/me");
     let mut me_resp = client
         .get(&me_uri)
@@ -78,7 +85,7 @@ async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Result<User, 
 
     check_status(&me_resp)?;
 
-    let user: User = me_resp
+    let user: GammaUser = me_resp
         .body_json()
         .await
         .map_err(|e| anyhow!("gamma: failed to deserialize json: {}", e))?;
@@ -86,7 +93,7 @@ async fn get_me(client: &mut Client, opt: &Opt, username: &str) -> Result<User, 
     Ok(user)
 }
 
-pub(crate) async fn get_user(opt: &Opt, username: &str) -> Result<User, anyhow::Error> {
+pub(crate) async fn get_user(opt: &Opt, username: &str) -> Result<GammaUser, anyhow::Error> {
     let client = Client::default();
     let user_uri = format!("{}{}{}", opt.gamma_uri, "/api/users/", username);
     let mut user_resp = client
@@ -105,7 +112,7 @@ pub(crate) async fn get_user(opt: &Opt, username: &str) -> Result<User, anyhow::
 
     check_status(&user_resp)?;
 
-    let user: User = user_resp.body_json().await.map_err(|e| {
+    let user: GammaUser = user_resp.body_json().await.map_err(|e| {
         error!("{}", e);
         anyhow!("gamma: failed to deserialize json: {}", e)
     })?;
@@ -113,7 +120,7 @@ pub(crate) async fn get_user(opt: &Opt, username: &str) -> Result<User, anyhow::
     Ok(user)
 }
 
-impl User {
+impl GammaUser {
     pub fn is_member_of<T: AsRef<str>>(&self, allowed: &[T]) -> bool {
         let mut groups = self
             .groups

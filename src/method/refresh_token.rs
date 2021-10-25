@@ -1,6 +1,6 @@
 use crate::{
     gamma, redis, response,
-    token::{new_token, resource_scopes_str, validate_scopes, Access},
+    token::{new_token, resource_scopes_str, validate_scopes, Access, User, MACHINE_USER},
     util::{hash_token, utc_date_time_to_rfc3339},
     State,
 };
@@ -76,7 +76,12 @@ pub async fn handler(mut req: Request<State>) -> tide::Result {
                     return Ok(response::unauthorized("Invalid or expired token"));
                 }
             };
-            let user = gamma::get_user(&state.opt, &username).await?;
+
+            let user = if username == MACHINE_USER {
+                User::MachineUser(refresh_token.clone())
+            } else {
+                User::GammaUser(gamma::get_user(&state.opt, &username).await?)
+            };
 
             let scope = validate_scopes(params.scope, Some(&user), &state.opt);
 

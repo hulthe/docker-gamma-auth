@@ -50,6 +50,7 @@ async fn run() -> Result<(), Error> {
     let jwt_enc_key = EncodingKey::from_rsa_pem(pem.as_bytes())?;
 
     let opt = Opt::from_env()?;
+    let port = opt.port;
 
     let client = Client::open(opt.redis_host.clone())?;
     let manager = RedisConnectionManager::new(client);
@@ -77,6 +78,6 @@ async fn run() -> Result<(), Error> {
     app.at("/token")
         .get(method::issue_token::handler)
         .post(method::refresh_token::handler);
-    app.listen("0.0.0.0:3000").await?;
+    app.listen(format!("0.0.0.0:{}", port)).await?;
     Ok(())
 }

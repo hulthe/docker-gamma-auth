@@ -1,6 +1,6 @@
 use crate::{
     error::Error,
-    gamma::User,
+    gamma::GammaUser,
     opt::Opt,
     util::{generate_key_id, random_string, split_array},
     State,
@@ -232,15 +232,23 @@ pub mod resource_scopes_str {
     }
 }
 
+pub static MACHINE_USER: &'static str = "__machine";
+
+pub enum User {
+    MachineUser(String),
+    GammaUser(GammaUser),
+}
+
 pub fn validate_scopes(
     scopes: impl IntoIterator<Item = Access>,
     user: Option<&User>,
     opt: &Opt,
 ) -> Vec<Access> {
-    let privileged_user = user
-        .iter()
-        .any(|user| user.is_member_of(&opt.priviliged_groups));
-
+    let privileged_user = match user {
+        Some(User::MachineUser(_)) => true,
+        Some(User::GammaUser(user)) => user.is_member_of(&opt.priviliged_groups),
+        _ => false,
+    };
     scopes
         .into_iter()
         .filter_map(|scope| {
